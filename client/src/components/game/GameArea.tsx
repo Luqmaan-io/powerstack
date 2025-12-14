@@ -172,7 +172,7 @@ const gameReducer = (state: GameState, action: Action): GameState => {
 
 export const GameArea = () => {
   const [state, dispatch] = useReducer(gameReducer, null, getInitialState);
-  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+  const [selectedCards, setSelectedCards] = useState<string[]>([]); // Changed to array to track order
 
   // Bot Turn Effect
   useEffect(() => {
@@ -206,48 +206,32 @@ export const GameArea = () => {
     if (state.players[state.currentPlayerIndex].isBot) return;
 
     setSelectedCards(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(card.id)) {
-        newSet.delete(card.id);
+      const newArray = [...prev];
+      if (newArray.includes(card.id)) {
+        return newArray.filter(id => id !== card.id);
       } else {
-        // Selection Logic for Combos
-        // 1. If empty, just add
-        if (newSet.size === 0) {
-             newSet.add(card.id);
-        } else {
-            // 2. If adding, verify it *could* be part of a combo (simplified: just allow selection, validate on play)
-            newSet.add(card.id);
-        }
+        newArray.push(card.id);
+        return newArray;
       }
-      return newSet;
     });
   };
 
   const handlePlay = () => {
     const playerHand = state.players[0].hand;
     
-    // Get selected cards
-    const cardsToPlay = playerHand.filter(c => selectedCards.has(c.id));
+    // Get selected cards respecting SELECTION ORDER
+    // We map the IDs in selectedCards array to actual card objects
+    const cardsToPlay = selectedCards
+        .map(id => playerHand.find(c => c.id === id))
+        .filter((c): c is CardType => !!c); // Type guard to remove undefined
     
     // VALIDATION 1: Queen Rule
     // "Queen cards have to be covered with another card of the same suit."
     // If last card is Q, prevent play.
     const lastCard = cardsToPlay[cardsToPlay.length - 1];
-    if (lastCard && lastCard.rank === 'Q') {
-         // Check if reversed order handles it? 
-         // If I selected Q + 4 of same suit.
-         // Normal order: 4 -> Q (Ends on Q) -> Invalid.
-         // Reversed: Q -> 4 (Ends on 4) -> Valid.
-         
-         // So if standard order ends in Q, try reverse?
-         // If reverse also ends in Q (e.g. Q-Q), then invalid.
-    }
-    
-    // Try Standard Order
+    const endsOnQueen = lastCard && lastCard.rank === 'Q';
+
     const topCard = state.pile[state.pile.length - 1];
-    
-    // Check if ends on Queen
-    const endsOnQueen = cardsToPlay[cardsToPlay.length - 1].rank === 'Q';
     
     if (isValidCombo(cardsToPlay, topCard, state.activeSuit, state.penaltyStack)) {
       if (endsOnQueen) {
@@ -259,30 +243,13 @@ export const GameArea = () => {
           return;
       }
       dispatch({ type: 'PLAY_CARDS', cards: cardsToPlay });
-      setSelectedCards(new Set());
+      setSelectedCards([]);
     } else {
-        // Try reversed?
-        const reversed = [...cardsToPlay].reverse();
-        const reversedEndsOnQueen = reversed[reversed.length - 1].rank === 'Q';
-        
-        if (isValidCombo(reversed, topCard, state.activeSuit, state.penaltyStack)) {
-             if (reversedEndsOnQueen) {
-                toast({
-                    title: "Must cover Queen",
-                    description: "You cannot end your turn on a Queen.",
-                    variant: "destructive"
-                });
-                return;
-             }
-            dispatch({ type: 'PLAY_CARDS', cards: reversed });
-            setSelectedCards(new Set());
-        } else {
-             toast({
-                title: "Invalid Move",
-                description: "That combo doesn't match the rules.",
-                variant: "destructive"
-              });
-        }
+         toast({
+            title: "Invalid Move",
+            description: "That combo doesn't match the rules. Check your selection order.",
+            variant: "destructive"
+          });
     }
   };
 
@@ -406,14 +373,14 @@ export const GameArea = () => {
             <>
                 <div className="flex gap-4 mb-2">
                     <Button 
-                        disabled={!isPlayerTurn || selectedCards.size === 0} 
+                        disabled={!isPlayerTurn || selectedCards.length === 0} 
                         onClick={handlePlay}
                         className={cn(
                           "bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-10 py-6 text-lg shadow-lg shadow-primary/20 transition-all",
-                          (!isPlayerTurn || selectedCards.size === 0) && "opacity-50 cursor-not-allowed"
+                          (!isPlayerTurn || selectedCards.length === 0) && "opacity-50 cursor-not-allowed"
                         )}
                     >
-                        PLAY SELECTED ({selectedCards.size})
+                        PLAY SELECTED ({selectedCards.length})
                     </Button>
                      <Button 
                         variant="secondary"
@@ -428,7 +395,7 @@ export const GameArea = () => {
                     cards={state.players[0].hand} 
                     isCurrentPlayer={true} 
                     onCardClick={handleCardClick}
-                    selectedCards={selectedCards}
+                    selectedCards={new Set(selectedCards)}
                     position="bottom"
                 />
             </>
