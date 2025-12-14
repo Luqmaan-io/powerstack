@@ -90,6 +90,9 @@ export function isValidMove(prevCard: Card, nextCard: Card, activeSuit: Suit | n
   // Ace can be played on anything (usually)
   if (nextCard.rank === 'A') return true;
 
+  // Ace Rule Inside Combo: If prevCard is Ace, it allows playing any card (implicitly changing suit)
+  if (prevCard.rank === 'A') return true;
+
   return false;
 }
 
@@ -99,42 +102,15 @@ export function isValidCombo(cards: Card[], topCard: Card, activeSuit: Suit | nu
   // First card must be valid on top of pile
   if (!isValidMove(topCard, cards[0], activeSuit, penaltyStack)) return false;
 
-  // Subsequent cards must form a chain
+  // Subsequent cards must form a chain based on standard move rules (Suit or Rank)
   for (let i = 0; i < cards.length - 1; i++) {
     const current = cards[i];
     const next = cards[i+1];
     
-    // If in penalty mode, subsequent cards must ALSO be counters if we are stacking?
-    // User says: "Placing a 2 down means the next player has to pick up 2 cards or place another 2 down to stack"
-    // This implies you can stack multiple 2s in one turn?
-    // "if a player place 2 8's that would mean the next 2 players miss a go"
-    // Yes, stacking is allowed in one turn.
-    
-    if (penaltyStack > 0) {
-        // If we started a counter chain, subsequent cards must continue it?
-        // Actually, isValidMove already checked the first one.
-        // If the first one was a '2', the penaltyStack for the *next* card in the combo is technically irrelevant 
-        // because we are the current player adding to it.
-        // But we should ensure consistency. 
-        // If I play 2H on 2D, I can then play 2S on 2H? Yes.
-        // Can I play 3S on 2S? 
-        // If I played a 2, I am adding to the penalty. I shouldn't be able to switch to a normal card unless it's a specific rule.
-        // Usually, if you play a power card, you can continue a combo.
-        // Let's stick to standard combo rules.
-    }
-
-    const isSameRank = current.rank === next.rank;
-    const isSameSuit = current.suit === next.suit;
-    
-    // Check for Ascending/Descending Rank in Same Suit
-    // We need numeric values for this
-    const valCurr = getRankValue(current.rank);
-    const valNext = getRankValue(next.rank);
-    const diff = Math.abs(valCurr - valNext);
-    const isSequence = isSameSuit && (diff === 1 || diff === 12); // 12 allows K-A wrap if desired, usually just 1
-
-    if (!isSameRank && !isSequence) {
-      return false;
+    // Pass null for activeSuit because the previous card in the combo dictates the "active suit" for the next card
+    // Pass 0 for penaltyStack because once the combo starts, subsequent cards follow standard connection rules
+    if (!isValidMove(current, next, null, 0)) {
+       return false;
     }
   }
 
