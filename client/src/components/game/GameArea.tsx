@@ -4,7 +4,7 @@ import { Hand } from './Hand';
 import { Card } from './Card';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Club, Diamond, Heart, Spade } from 'lucide-react';
 import tableTexture from '@assets/generated_images/dark_luxury_poker_table_felt_texture.png';
@@ -85,28 +85,15 @@ const gameReducer = (state: GameState, action: Action): GameState => {
 
       // 2: Pickup 2
       if (lastCard.rank === '2') {
-        // Only count consecutive 2s at the end of the combo? 
-        // Or all 2s played? User says "stack to penalty".
-        // If I play 2-2-2, that's +6.
         const twoCount = cards.filter(c => c.rank === '2').length;
         newPenalty += 2 * twoCount;
       }
       
       // Black Jack (J Spades/Clubs)
-      // Check for Black Jacks in the combo
       const blackJackCount = cards.filter(c => c.rank === 'J' && (c.suit === 'spades' || c.suit === 'clubs')).length;
       if (blackJackCount > 0) {
-        // Check if countered by Red Jack in the SAME combo?
-        // Logic: If the LAST card is Black Jack, penalty is active.
-        // If LAST card is Red Jack, penalty is cleared (if it was active).
-        // Since we process the combo as a block:
         if (lastCard.rank === 'J' && (lastCard.suit === 'spades' || lastCard.suit === 'clubs')) {
             newPenalty += 7 * blackJackCount;
-        } else if (lastCard.rank === 'J' && (lastCard.suit === 'hearts' || lastCard.suit === 'diamonds')) {
-            // Cleared? Or just didn't add?
-            // "unless they have the red jack to place on top"
-            // So Red Jack cancels the penalty.
-            // If I play Black Jack -> Red Jack, penalty is 0.
         }
       }
 
@@ -124,19 +111,10 @@ const gameReducer = (state: GameState, action: Action): GameState => {
       
       // Advance Player logic
       if (newPhase !== 'selecting_suit') {
-         // Advance 1 step normally
          let steps = 1;
-         
-         // If 8s were played, we skip players.
-         // "if a player place 2 8's that would mean the next 2 players miss a go"
-         // This means we advance 1 (normal) + 2 (skips) = 3 steps?
-         // Or does it mean the next player is skipped, AND the one after that?
-         // "next 2 players miss a go" -> Player A plays -> Player B (miss) -> Player C (miss) -> Player D (plays).
-         // So we advance 1 + 2 = 3 steps.
          if (eightCount > 0) {
              steps += eightCount;
          }
-         
          nextIndex = (state.currentPlayerIndex + (steps * newDirection) + 400) % 4; // Add large number to handle negative modulo
       }
 
@@ -149,7 +127,11 @@ const gameReducer = (state: GameState, action: Action): GameState => {
         currentPlayerIndex: nextIndex,
         turnPhase: newPhase,
         activeSuit: newActiveSuit,
-        message: `${currentPlayer.name} played ${cards.length} cards.`
+        message: `${currentPlayer.name} played ${cards.length} cards.`,
+        lastTurn: {
+            playerId: currentPlayer.id,
+            cards: cards
+        }
       };
     }
 
@@ -176,27 +158,56 @@ const gameReducer = (state: GameState, action: Action): GameState => {
 
 export const GameArea = () => {
   const [state, dispatch] = useReducer(gameReducer, null, getInitialState);
-  const [selectedCards, setSelectedCards] = useState<string[]>([]); // Changed to array to track order
+  const [selectedCards, setSelectedCards] = useState<string[]>([]);
 
   // Bot Turn Effect
   useEffect(() => {
     if (state.players[state.currentPlayerIndex].isBot && state.turnPhase === 'playing' && !state.winner) {
       const timer = setTimeout(() => {
-        // Simple Bot Logic
         const bot = state.players[state.currentPlayerIndex];
         const topCard = state.pile[state.pile.length - 1];
         
-        // Find first valid card
-        const playableCard = bot.hand.find(c => isValidMove(topCard, c, state.activeSuit, state.penaltyStack));
+        // --- Improved Bot Logic ---
+        let cardsToPlay: CardType[] | null = null;
+        let suitToPick: Suit | null = null;
+
+        // Try to find a valid move
+        for (const card of bot.hand) {
+            // Check if single card is valid start
+            if (isValidMove(topCard, card, state.activeSuit, state.penaltyStack)) {
+                
+                // QUEEN CHECK: If it's a Queen, we MUST cover it
+                if (card.rank === 'Q') {
+                    // Look for cover card (same suit, not the same card)
+                    const coverCard = bot.hand.find(c => c.id !== card.id && c.suit === card.suit);
+                    
+                    if (coverCard) {
+                        // Found a cover! Play both.
+                        cardsToPlay = [card, coverCard];
+                        break; // Found a move, stop looking
+                    } else {
+                        // Can't cover Queen, so this single card move is INVALID for a Queen
+                        // Continue loop to find another card
+                        continue;
+                    }
+                }
+
+                // Normal Card or Power Card (not Queen)
+                cardsToPlay = [card];
+                
+                // If Ace, decide suit (randomly for now)
+                if (card.rank === 'A') {
+                    suitToPick = ['hearts', 'diamonds', 'clubs', 'spades'][Math.floor(Math.random() * 4)] as Suit;
+                }
+                
+                break; // Found a move
+            }
+        }
         
-        if (playableCard) {
-            // Check if Ace (bot needs to pick suit - random for now)
-            if (playableCard.rank === 'A') {
-                 dispatch({ type: 'PLAY_CARDS', cards: [playableCard] });
-                 // Small delay for suit pick
-                 setTimeout(() => dispatch({ type: 'CHANGE_SUIT', suit: 'hearts' }), 500); 
-            } else {
-                dispatch({ type: 'PLAY_CARDS', cards: [playableCard] });
+        if (cardsToPlay) {
+            dispatch({ type: 'PLAY_CARDS', cards: cardsToPlay });
+            if (suitToPick) {
+                 setTimeout(() => dispatch({ type: 'CHANGE_SUIT', suit: suitToPick! }), 500); 
             }
         } else {
           dispatch({ type: 'DRAW_CARD' });
@@ -208,7 +219,6 @@ export const GameArea = () => {
 
   const handleCardClick = (card: CardType) => {
     if (state.players[state.currentPlayerIndex].isBot) return;
-    // Prevent selection if waiting for suit selection
     if (state.turnPhase === 'selecting_suit') return;
 
     setSelectedCards(prev => {
@@ -223,19 +233,13 @@ export const GameArea = () => {
   };
 
   const handlePlay = () => {
-    if (state.turnPhase === 'selecting_suit') return; // Double check
+    if (state.turnPhase === 'selecting_suit') return; 
 
     const playerHand = state.players[0].hand;
-    
-    // Get selected cards respecting SELECTION ORDER
-    // We map the IDs in selectedCards array to actual card objects
     const cardsToPlay = selectedCards
         .map(id => playerHand.find(c => c.id === id))
-        .filter((c): c is CardType => !!c); // Type guard to remove undefined
+        .filter((c): c is CardType => !!c); 
     
-    // VALIDATION 1: Queen Rule
-    // "Queen cards have to be covered with another card of the same suit."
-    // If last card is Q, prevent play.
     const lastCard = cardsToPlay[cardsToPlay.length - 1];
     const endsOnQueen = lastCard && lastCard.rank === 'Q';
 
@@ -263,7 +267,6 @@ export const GameArea = () => {
 
   const currentPlayer = state.players[state.currentPlayerIndex];
   const isPlayerTurn = !currentPlayer.isBot;
-  const topCard = state.pile[state.pile.length - 1];
   const isSelectingSuit = state.turnPhase === 'selecting_suit' && isPlayerTurn;
 
   return (
@@ -278,7 +281,7 @@ export const GameArea = () => {
         }}
       />
       
-      {/* Suit Selection Overlay - Modal Style */}
+      {/* Suit Selection Overlay */}
       {isSelectingSuit && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
              <div className="bg-zinc-900 border-2 border-primary rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-6 animate-in zoom-in-95 duration-200">
@@ -371,6 +374,41 @@ export const GameArea = () => {
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* LAST TURN DISPLAY */}
+            <div className="h-24 w-full flex flex-col items-center justify-center">
+                <AnimatePresence mode="wait">
+                    {state.lastTurn ? (
+                        <motion.div 
+                            key={state.lastTurn.cards.map(c => c.id).join('-')}
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            className="flex flex-col items-center bg-black/40 p-2 rounded-lg backdrop-blur-sm border border-white/10"
+                        >
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs text-zinc-400 uppercase tracking-wider">Last Played by</span>
+                                <span className="text-sm font-bold text-primary">
+                                    {state.players.find(p => p.id === state.lastTurn?.playerId)?.name}
+                                </span>
+                            </div>
+                            <div className="flex gap-2">
+                                {state.lastTurn.cards.map((card, i) => (
+                                    <div key={card.id} className="transform hover:scale-110 transition-transform" style={{ zIndex: i }}>
+                                        <div className="w-12 h-16">
+                                            <Card card={card} className="text-[10px]" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </motion.div>
+                    ) : (
+                        <div className="h-full flex items-center justify-center text-zinc-600 text-sm italic">
+                            Waiting for first move...
+                        </div>
+                    )}
+                </AnimatePresence>
             </div>
             
         </div>

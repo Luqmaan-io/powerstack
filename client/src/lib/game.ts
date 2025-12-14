@@ -29,6 +29,7 @@ export interface GameState {
   winner: string | null;
   turnPhase: GamePhase;
   message: string;
+  lastTurn: { playerId: string; cards: Card[] } | null;
 }
 
 const SUITS: Suit[] = ['hearts', 'diamonds', 'clubs', 'spades'];
@@ -151,6 +152,7 @@ export function getInitialState(): GameState {
     activeSuit: null,
     winner: null,
     turnPhase: 'playing',
-    message: "Game Started! Your Turn."
+    message: "Game Started! Your Turn.",
+    lastTurn: null
   };
 }
