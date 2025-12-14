@@ -42,6 +42,9 @@ const gameReducer = (state: GameState, action: Action): GameState => {
       const drawnCards = newDeck.splice(0, Math.min(drawCount, newDeck.length));
       player.hand = [...player.hand, ...drawnCards];
       
+      // Ensure phase is playing if user drew manually (though disabled in UI)
+      const nextPhase = state.turnPhase === 'selecting_suit' ? 'playing' : state.turnPhase;
+
       return {
         ...state,
         deck: newDeck,
@@ -49,6 +52,7 @@ const gameReducer = (state: GameState, action: Action): GameState => {
         penaltyStack: 0, // Reset penalty after drawing
         message: `Player ${player.name} drew ${drawnCards.length} cards`,
         currentPlayerIndex: (state.currentPlayerIndex + state.direction + 4) % 4,
+        turnPhase: nextPhase
       };
     }
 
@@ -204,6 +208,8 @@ export const GameArea = () => {
 
   const handleCardClick = (card: CardType) => {
     if (state.players[state.currentPlayerIndex].isBot) return;
+    // Prevent selection if waiting for suit selection
+    if (state.turnPhase === 'selecting_suit') return;
 
     setSelectedCards(prev => {
       const newArray = [...prev];
@@ -217,6 +223,8 @@ export const GameArea = () => {
   };
 
   const handlePlay = () => {
+    if (state.turnPhase === 'selecting_suit') return; // Double check
+
     const playerHand = state.players[0].hand;
     
     // Get selected cards respecting SELECTION ORDER
@@ -256,6 +264,7 @@ export const GameArea = () => {
   const currentPlayer = state.players[state.currentPlayerIndex];
   const isPlayerTurn = !currentPlayer.isBot;
   const topCard = state.pile[state.pile.length - 1];
+  const isSelectingSuit = state.turnPhase === 'selecting_suit' && isPlayerTurn;
 
   return (
     <div className="relative w-full h-[100dvh] overflow-hidden flex flex-col items-center justify-between p-2 sm:p-4">
@@ -269,6 +278,27 @@ export const GameArea = () => {
         }}
       />
       
+      {/* Suit Selection Overlay - Modal Style */}
+      {isSelectingSuit && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+             <div className="bg-zinc-900 border-2 border-primary rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-6 animate-in zoom-in-95 duration-200">
+                <h2 className="text-2xl font-serif text-primary">Choose New Suit</h2>
+                <div className="flex gap-6">
+                    {(['hearts', 'diamonds', 'clubs', 'spades'] as Suit[]).map(suit => (
+                        <Button 
+                            key={suit} 
+                            variant="outline" 
+                            className="w-20 h-20 p-0 rounded-full hover:scale-110 transition-transform border-2 hover:border-primary bg-zinc-800" 
+                            onClick={() => dispatch({ type: 'CHANGE_SUIT', suit })}
+                        >
+                            <SuitIcon suit={suit} className="w-10 h-10" />
+                        </Button>
+                    ))}
+                </div>
+             </div>
+        </div>
+      )}
+
       {/* Top Opponent (North) */}
       <div className="z-10 w-full flex justify-center py-2 shrink-0">
         <div className="flex flex-col items-center scale-75 origin-top sm:scale-100">
@@ -301,8 +331,16 @@ export const GameArea = () => {
             <div className="flex items-center gap-8 sm:gap-12">
                 {/* Deck */}
                 <div 
-                    className="relative w-24 h-36 bg-indigo-950 rounded-xl border-2 border-indigo-900 shadow-2xl cursor-pointer hover:scale-105 transition-transform group"
-                    onClick={() => isPlayerTurn && dispatch({ type: 'DRAW_CARD' })}
+                    className={cn(
+                        "relative w-24 h-36 bg-indigo-950 rounded-xl border-2 border-indigo-900 shadow-2xl transition-transform group",
+                        isPlayerTurn && !isSelectingSuit && "cursor-pointer hover:scale-105",
+                        (!isPlayerTurn || isSelectingSuit) && "opacity-80 cursor-not-allowed"
+                    )}
+                    onClick={() => {
+                        if (isPlayerTurn && !isSelectingSuit) {
+                            dispatch({ type: 'DRAW_CARD' });
+                        }
+                    }}
                 >
                     <div className="absolute inset-0 flex items-center justify-center">
                         <span className="text-indigo-500/30 font-bold text-3xl group-hover:text-indigo-400/50 transition-colors">DECK</span>
@@ -335,18 +373,6 @@ export const GameArea = () => {
                 </div>
             </div>
             
-            {state.turnPhase === 'selecting_suit' && isPlayerTurn && (
-                <div className="bg-zinc-900/95 p-6 rounded-xl border border-primary/50 backdrop-blur-md shadow-2xl z-50 animate-in fade-in zoom-in duration-300">
-                    <p className="text-white mb-4 text-center font-serif text-lg">Choose a Suit</p>
-                    <div className="flex gap-4">
-                        {(['hearts', 'diamonds', 'clubs', 'spades'] as Suit[]).map(suit => (
-                            <Button key={suit} variant="outline" className="w-16 h-16 p-0 rounded-full hover:scale-110 transition-transform border-2 hover:border-primary" onClick={() => dispatch({ type: 'CHANGE_SUIT', suit })}>
-                                <SuitIcon suit={suit} className="w-8 h-8" />
-                            </Button>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
 
         {/* East */}
@@ -373,20 +399,20 @@ export const GameArea = () => {
             <>
                 <div className="flex gap-4 mb-2">
                     <Button 
-                        disabled={!isPlayerTurn || selectedCards.length === 0} 
+                        disabled={!isPlayerTurn || selectedCards.length === 0 || isSelectingSuit} 
                         onClick={handlePlay}
                         className={cn(
                           "bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-10 py-6 text-lg shadow-lg shadow-primary/20 transition-all",
-                          (!isPlayerTurn || selectedCards.length === 0) && "opacity-50 cursor-not-allowed"
+                          (!isPlayerTurn || selectedCards.length === 0 || isSelectingSuit) && "opacity-50 cursor-not-allowed"
                         )}
                     >
                         PLAY SELECTED ({selectedCards.length})
                     </Button>
                      <Button 
                         variant="secondary"
-                        disabled={!isPlayerTurn} 
+                        disabled={!isPlayerTurn || isSelectingSuit} 
                         onClick={() => dispatch({ type: 'DRAW_CARD' })}
-                        className="px-8 py-6 text-lg bg-zinc-800 text-white hover:bg-zinc-700"
+                        className="px-8 py-6 text-lg bg-zinc-800 text-white hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {state.penaltyStack > 0 ? `Pick Up ${state.penaltyStack}` : "Draw Card"}
                     </Button>
