@@ -30,6 +30,7 @@ export interface GameState {
   turnPhase: GamePhase;
   message: string;
   lastTurn: { playerId: string; cards: Card[] } | null;
+  skipStack: number; // For 8s (Counterable Skips)
 }
 
 const SUITS: Suit[] = ['hearts', 'diamonds', 'clubs', 'spades'];
@@ -54,7 +55,7 @@ export function shuffleDeck(deck: Card[]): Card[] {
   return [...deck].sort(() => Math.random() - 0.5);
 }
 
-export function isValidMove(prevCard: Card, nextCard: Card, activeSuit: Suit | null, penaltyStack: number = 0): boolean {
+export function isValidMove(prevCard: Card, nextCard: Card, activeSuit: Suit | null, penaltyStack: number = 0, skipStack: number = 0): boolean {
   // Penalty Handling
   if (penaltyStack > 0) {
     // If penalty is active, you MUST play a counter card
@@ -68,6 +69,14 @@ export function isValidMove(prevCard: Card, nextCard: Card, activeSuit: Suit | n
     if (isBlackJack && isRedJack) return true;
 
     // Otherwise, you cannot play (must pick up)
+    return false;
+  }
+
+  // Skip Handling (8s)
+  if (skipStack > 0) {
+    // If skip is active, you MUST play an 8 to counter
+    if (nextCard.rank === '8') return true;
+    // Otherwise you cannot play (must miss turn)
     return false;
   }
 
@@ -97,11 +106,11 @@ export function isValidMove(prevCard: Card, nextCard: Card, activeSuit: Suit | n
   return false;
 }
 
-export function isValidCombo(cards: Card[], topCard: Card, activeSuit: Suit | null, penaltyStack: number = 0): boolean {
+export function isValidCombo(cards: Card[], topCard: Card, activeSuit: Suit | null, penaltyStack: number = 0, skipStack: number = 0): boolean {
   if (cards.length === 0) return false;
 
   // First card must be valid on top of pile
-  if (!isValidMove(topCard, cards[0], activeSuit, penaltyStack)) return false;
+  if (!isValidMove(topCard, cards[0], activeSuit, penaltyStack, skipStack)) return false;
 
   // Subsequent cards must form a chain based on standard move rules (Suit or Rank)
   for (let i = 0; i < cards.length - 1; i++) {
@@ -109,8 +118,8 @@ export function isValidCombo(cards: Card[], topCard: Card, activeSuit: Suit | nu
     const next = cards[i+1];
     
     // Pass null for activeSuit because the previous card in the combo dictates the "active suit" for the next card
-    // Pass 0 for penaltyStack because once the combo starts, subsequent cards follow standard connection rules
-    if (!isValidMove(current, next, null, 0)) {
+    // Pass 0 for penalty/skip because once the combo starts, subsequent cards follow standard connection rules
+    if (!isValidMove(current, next, null, 0, 0)) {
        return false;
     }
   }
@@ -153,6 +162,7 @@ export function getInitialState(): GameState {
     winner: null,
     turnPhase: 'playing',
     message: "Game Started! Your Turn.",
-    lastTurn: null
+    lastTurn: null,
+    skipStack: 0
   };
 }
