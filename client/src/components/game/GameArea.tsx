@@ -291,7 +291,7 @@ export const GameArea = () => {
   const topCard = state.pile[state.pile.length - 1];
 
   return (
-    <div className="relative w-full h-screen overflow-hidden flex flex-col items-center justify-between p-4">
+    <div className="relative w-full h-[100dvh] overflow-hidden flex flex-col items-center justify-between p-2 sm:p-4">
       {/* Background Image Layer */}
       <div 
         className="absolute inset-0 z-0 pointer-events-none opacity-80"
@@ -303,8 +303,8 @@ export const GameArea = () => {
       />
       
       {/* Top Opponent (North) */}
-      <div className="z-10 w-full flex justify-center py-4">
-        <div className="flex flex-col items-center">
+      <div className="z-10 w-full flex justify-center py-2 shrink-0">
+        <div className="flex flex-col items-center scale-75 origin-top sm:scale-100">
              <div className="w-12 h-12 bg-zinc-800 rounded-full border-2 border-primary flex items-center justify-center text-2xl mb-2 shadow-lg">
                 {state.players[2].avatar}
              </div>
@@ -314,9 +314,9 @@ export const GameArea = () => {
       </div>
 
       {/* Middle Row: West, Table, East */}
-      <div className="z-10 flex-1 w-full flex items-center justify-between px-8">
+      <div className="z-10 flex-1 w-full flex items-center justify-between px-2 sm:px-8 min-h-0">
         {/* West */}
-        <div className="flex flex-col items-center -rotate-90">
+        <div className="flex flex-col items-center -rotate-90 scale-75 sm:scale-100 origin-left">
              <div className="w-12 h-12 bg-zinc-800 rounded-full border-2 border-primary flex items-center justify-center text-2xl mb-2 shadow-lg transform rotate-90">
                 {state.players[1].avatar}
              </div>
@@ -325,13 +325,13 @@ export const GameArea = () => {
         </div>
 
         {/* TABLE CENTER */}
-        <div className="flex flex-col items-center gap-8">
+        <div className="flex flex-col items-center gap-4 sm:gap-8 scale-90 sm:scale-100">
             {/* Game Message */}
-            <div className="h-8 text-primary font-serif text-xl animate-pulse text-center">
+            <div className="h-6 sm:h-8 text-primary font-serif text-lg sm:text-xl animate-pulse text-center whitespace-nowrap">
                 {state.message}
             </div>
 
-            <div className="flex items-center gap-12">
+            <div className="flex items-center gap-8 sm:gap-12">
                 {/* Deck */}
                 <div 
                     className="relative w-24 h-36 bg-indigo-950 rounded-xl border-2 border-indigo-900 shadow-2xl cursor-pointer hover:scale-105 transition-transform group"
@@ -383,7 +383,7 @@ export const GameArea = () => {
         </div>
 
         {/* East */}
-        <div className="flex flex-col items-center rotate-90">
+        <div className="flex flex-col items-center rotate-90 scale-75 sm:scale-100 origin-right">
              <div className="w-12 h-12 bg-zinc-800 rounded-full border-2 border-primary flex items-center justify-center text-2xl mb-2 shadow-lg transform -rotate-90">
                 {state.players[3].avatar}
              </div>
@@ -393,7 +393,7 @@ export const GameArea = () => {
       </div>
 
       {/* Player (South) */}
-      <div className="z-20 w-full flex flex-col items-center justify-end pb-8 gap-6">
+      <div className="z-20 w-full flex flex-col items-center justify-end pb-2 sm:pb-8 gap-2 sm:gap-6 shrink-0">
         {state.winner ? (
              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-1000">
                 <div className="text-center p-12 bg-zinc-900 border border-gold-500 rounded-3xl shadow-2xl">
